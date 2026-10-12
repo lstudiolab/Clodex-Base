@@ -5,7 +5,7 @@
 3. Build/test with `cargo test`.
 4. Train with `cargo run --release -- train --corpus data/train.txt --steps 1000`.
 5. Stop a run only after the periodic checkpoint has been written when possible. The default save cadence is 100 updates.
-6. Resume the same corpus and checkpoint using the same command. Resume is the default; pass `--fresh` only to intentionally start new weights. Keep the same hidden size when resuming.
+6. Resume the same corpus and checkpoint using the same command. Resume is the default; pass `--fresh` only to intentionally start new weights. The run manifest records the corpus SHA-256. If the corpus hash differs from the manifest, Clodex refuses to continue unless you explicitly pass `--allow-corpus-change`. This prevents accidentally continuing weights on a different dataset. The manifest is replaced only after a training session finishes successfully. Keep the same hidden size when resuming.
 7. Sample with `cargo run --release -- generate --prompt "fn main" --max-new-tokens 128`.
 
 The initial engine trains on raw UTF-8 bytes. The loss/task quality will be limited by corpus quality, model capacity, training time, and the CPU reference engine. Do not interpret a successful build or a low training loss as proof of coding competence; test generated code separately.
