@@ -249,7 +249,8 @@ float train_step(Parameters& p, Gradients& grad, const std::string& corpus,
             const std::size_t base = static_cast<std::size_t>(token) * p.hidden;
             for (int j = 0; j < p.hidden; ++j) grad.output[base + j] += g * f.state[j];
         }
-        std::fill(dh.begin(), dh.end(), 0.0f);
+        // Preserve the gradient arriving from the next recurrent step, then
+        // add the output-projection gradient for this time step.
         for (int j = 0; j < p.hidden; ++j) {
             for (int token = 0; token < kVocabulary; ++token) {
                 dh[j] += p.output[static_cast<std::size_t>(token) * p.hidden + j] * dlogits[token] * inv_sequence;
@@ -374,6 +375,13 @@ extern "C" int clodex_generate(const char* checkpoint_path, const unsigned char*
         std::mt19937_64 rng(seed);
         for (std::size_t i = 0; i < max_new_tokens; ++i) {
             softmax(model, state, static_cast<float>(temperature), probs);
+            // BOS/EOS are structural IDs, not output bytes; exclude them from sampling.
+            probs[256] = 0.0f;
+            probs[257] = 0.0f;
+            float total = 0.0f;
+            for (float value : probs) total += value;
+            require(total > 0.0f, "model assigned no probability to byte tokens");
+            for (auto& value : probs) value /= total;
             const int token = sample_token(probs, rng);
             // The baseline emits bytes only; reserved BOS/EOS IDs are not sampled as text.
             if (token > 255) {
