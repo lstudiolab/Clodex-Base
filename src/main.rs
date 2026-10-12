@@ -3,7 +3,6 @@ mod tokenizer;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -11,7 +10,6 @@ use std::{
     fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -250,6 +248,7 @@ fn main() -> Result<()> {
             println!("lines: {}", lines);
             println!("whitespace tokens (rough estimate): {}", words);
             println!("sha256: {}", hash_file(&path)?);
+            println!("UTF-8 byte IDs (Rust tokenizer): {}", tokenizer::encode(&text, false).len());
             println!("UTF-8 byte tokenizer vocabulary: 258 IDs (BOS=256, EOS=257)");
             Ok(())
         }
