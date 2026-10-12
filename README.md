@@ -35,9 +35,10 @@ cargo run -- agent list --workspace /path/to/project
 cargo run -- agent read --workspace /path/to/project --path src/main.rs
 cargo run -- agent write --workspace /path/to/project --path src/main.rs --content-file /tmp/proposed.rs
 cargo run -- agent test --workspace /path/to/project --command "cargo test"
+cargo run --release -- agent run --workspace /path/to/project --task "Find and fix the parser bug" --iterations 6
 ```
 
-Writes preview the size and first lines of the proposed change and require explicit confirmation. Paths cannot traverse outside the workspace. Only a small test-command allowlist is enabled; arbitrary shell execution is not offered. This tool layer is a safe foundation for an agent, but the current small model is not yet capable enough to plan and reliably complete coding tasks autonomously.
+Writes preview the size and first lines of the proposed change and require explicit confirmation. Paths cannot traverse outside the workspace. Only a small test-command allowlist is enabled; arbitrary shell execution is not offered. The `agent run` command connects generation to a structured tool loop (list/read/search/write/test/finish). Invalid model outputs are rejected and retried; writes require explicit confirmation and tests use the allowlist. This is an end-to-end experimental agent architecture, but the current small model is not yet capable enough to plan and reliably complete coding tasks autonomously.
 
 ## Weights and compute
 
