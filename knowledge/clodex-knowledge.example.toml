@@ -1,0 +1,32 @@
+# Example configuration for the future Clodex knowledge runtime.
+# Copy to clodex-knowledge.toml and adjust paths as needed.
+schema_version = 1
+
+[vault]
+roots = ["knowledge"]
+extensions = [".md", ".markdown", ".txt", ".rs", ".cpp", ".h", ".hpp"]
+exclude = [".git/**", "target/**", "build/**", "artifacts/**", "data/private/**"]
+follow_symlinks = false
+max_file_bytes = 1048576
+
+[index]
+storage = ".clodex/index"
+incremental = true
+reconcile_on_start = true
+rebuild_if_corrupt = true
+
+[retrieval]
+max_results = 12
+max_excerpt_chars = 1800
+linked_note_depth = 1
+max_total_chars = 12000
+title_weight = 5.0
+tag_weight = 3.0
+path_weight = 2.0
+body_weight = 1.0
+freshness_weight = 0.25
+
+[modules]
+# Optional module IDs are explicitly enabled here.
+# Built-in lexical search remains available if optional modules are missing.
+enabled = ["lexical-search"]
