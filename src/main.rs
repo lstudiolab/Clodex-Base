@@ -117,6 +117,18 @@ enum AgentCommands {
     Write { workspace: PathBuf, path: PathBuf, content_file: PathBuf },
     /// List files in a workspace (hidden build and VCS folders are excluded).
     List { workspace: PathBuf },
+    /// Run an experimental model-driven coding-agent loop; tool writes still require confirmation.
+    Run {
+        workspace: PathBuf,
+        #[arg(long)]
+        task: String,
+        #[arg(long, default_value = DEFAULT_CHECKPOINT)]
+        checkpoint: PathBuf,
+        #[arg(long, default_value_t = 6)]
+        iterations: usize,
+        #[arg(long, default_value_t = 512)]
+        response_bytes: usize,
+    },
     /// Run a known project test command with explicit allowlisting.
     Test { workspace: PathBuf, #[arg(long, default_value = "cargo test")] command: String },
 }
@@ -288,17 +300,22 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
     Ok(())
 }
 
-fn run_generate(checkpoint: PathBuf, prompt: String, max_new_tokens: usize, temperature: f64, seed: u64) -> Result<()> {
+fn generate_text(checkpoint: &Path, prompt: &str, max_new_tokens: usize, temperature: f64, seed: u64) -> Result<String> {
     if max_new_tokens == 0 || max_new_tokens > 16_384 { bail!("max-new-tokens must be between 1 and 16384"); }
     if !(temperature.is_finite() && (0.05..=3.0).contains(&temperature)) { bail!("temperature must be in [0.05, 3.0]"); }
     if !checkpoint.is_file() { bail!("checkpoint not found: {}. Train the model first.", checkpoint.display()); }
-    let checkpoint_c = cstring_path(&checkpoint)?;
+    let checkpoint_c = cstring_path(checkpoint)?;
     let mut out = vec![0u8; max_new_tokens];
     let mut written = 0usize;
     let code = unsafe { clodex_generate(checkpoint_c.as_ptr(), prompt.as_bytes().as_ptr(), prompt.len(), max_new_tokens, seed, temperature, out.as_mut_ptr(), out.len(), &mut written) };
     if code != 0 { bail!("generation failed: {}", engine_error()); }
+    Ok(String::from_utf8_lossy(&out[..written]).into_owned())
+}
+
+fn run_generate(checkpoint: PathBuf, prompt: String, max_new_tokens: usize, temperature: f64, seed: u64) -> Result<()> {
+    let generated = generate_text(&checkpoint, &prompt, max_new_tokens, temperature, seed)?;
     io::stdout().write_all(prompt.as_bytes())?;
-    io::stdout().write_all(&out[..written])?;
+    io::stdout().write_all(generated.as_bytes())?;
     io::stdout().flush()?;
     println!();
     Ok(())
@@ -318,6 +335,12 @@ fn main() -> Result<()> {
                 agent::write_file_interactive(&workspace, &path, &content)
             }
             AgentCommands::List { workspace } => { for path in agent::list_files(&workspace)? { println!("{}", path.display()); } Ok(()) }
+            AgentCommands::Run { workspace, task, checkpoint, iterations, response_bytes } => {
+                if !checkpoint.is_file() { bail!("checkpoint not found: {}. Train a model first; the current baseline is experimental.", checkpoint.display()); }
+                agent::run_model_agent(&workspace, &task, iterations, response_bytes, |prompt, max_bytes| {
+                    generate_text(&checkpoint, prompt, max_bytes, 0.2, current_time())
+                })
+            }
             AgentCommands::Test { workspace, command } => agent::run_test_command(&workspace, &command),
         },
         Commands::Status { checkpoint, corpus } => {
