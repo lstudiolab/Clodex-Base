@@ -1,5 +1,9 @@
 name: Clodex CI
 
+concurrency:
+  group: clodex-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, "clodex/**"]
