@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Clodex Knowledge Record",
+  "description": "Versioned metadata for a task, reference, or experiment record.",
+  "type": "object",
+  "required": ["schema_version", "id", "kind", "title", "status"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "enum": ["reference", "task", "experiment", "training_candidate", "evaluation"] },
+    "title": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["captured", "parsed", "indexed", "reviewed", "approved", "evaluated", "rejected"] },
+    "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "sources": { "type": "array", "items": { "type": "string" } },
+    "related": { "type": "array", "items": { "type": "string" } },
+    "content_hash": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}
