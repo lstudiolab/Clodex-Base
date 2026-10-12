@@ -1,0 +1,27 @@
+name: Clodex CI
+
+concurrency:
+  group: clodex-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, "clodex/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build C++ reference engine
+        run: cmake -S engine -B build && cmake --build build --parallel
+      - name: Run C++ engine tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Check Rust
+        run: cargo check --all-targets
+      - name: Run Rust tests
+        run: cargo test --all-targets

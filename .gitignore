@@ -1,0 +1,9 @@
+/target/
+/build/
+/artifacts/
+/data/private/
+/data/*.txt
+*.ckpt
+*.bin
+*.weights
+*.log

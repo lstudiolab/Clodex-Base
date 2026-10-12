@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.16)
+project(clodex_engine LANGUAGES CXX)
+
+add_library(clodex_engine STATIC src/model.cpp)
+target_include_directories(clodex_engine PUBLIC include)
+target_compile_features(clodex_engine PUBLIC cxx_std_17)
+set_target_properties(clodex_engine PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+  target_compile_options(clodex_engine PRIVATE /W4 /O2)
+else()
+  target_compile_options(clodex_engine PRIVATE -Wall -Wextra -Wpedantic -O3)
+endif()
+
+add_executable(clodex-engine-smoke tests/smoke.cpp)
+target_link_libraries(clodex-engine-smoke PRIVATE clodex_engine)
+enable_testing()
+add_test(NAME clodex-engine-smoke COMMAND clodex-engine-smoke)
