@@ -258,4 +258,19 @@ mod tests {
         assert!(parse_tool_call(r#"{"tool":"rm","command":"rm -rf /"}"#).is_err());
         assert!(matches!(parse_tool_call(r#"{"tool":"finish","summary":"done"}"#).unwrap(), ToolCall::Finish { .. }));
     }
+
+    #[test]
+    fn model_agent_executes_a_structured_finish_action() {
+        let root = std::env::temp_dir().join(format!("clodex-loop-test-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let mut invoked = false;
+        run_model_agent(&root, "inspect only", 1, 128, |prompt, limit| {
+            invoked = true;
+            assert!(prompt.contains("inspect only"));
+            assert_eq!(limit, 128);
+            Ok(r#"{"tool":"finish","summary":"test complete"}"#.to_owned())
+        }).unwrap();
+        assert!(invoked);
+        let _ = fs::remove_dir_all(root);
+    }
 }
