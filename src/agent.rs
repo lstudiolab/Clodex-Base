@@ -43,7 +43,7 @@ pub fn list_files(workspace: &Path) -> Result<Vec<PathBuf>> {
             let entry = entry?;
             let name = entry.file_name();
             let s = name.to_string_lossy();
-            if s.starts_with('.') || matches!(s.as_ref(), "target" | "build" | "node_modules" | "vendor") { continue; }
+            if matches!(s.as_ref(), ".git" | ".ssh" | "target" | "build" | "node_modules" | "vendor") { continue; }
             let path = entry.path();
             let metadata = fs::symlink_metadata(&path)?;
             if metadata.file_type().is_symlink() { continue; }
