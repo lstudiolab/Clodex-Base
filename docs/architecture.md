@@ -6,7 +6,7 @@
 - **C++ neural engine**: a compact byte-level recurrent language model, softmax language-model loss, backpropagation through a truncated sequence, Adam updates, sampling, and binary checkpoint persistence.
 - **Tokenizer contract**: UTF-8 byte IDs 0–255, BOS 256, EOS 257. This avoids an untrained vocabulary-merging stage and keeps Unicode representable, at the cost of long token sequences and weak semantic efficiency.
 - **Resumable training**: checkpoints save model parameters, optimizer moments, architecture dimensions, and update count. Re-running `clodex train` uses a compatible checkpoint by default. The run manifest records the corpus hash so changed data is visible.
-- **Coding-agent tools**: workspace-limited file listing/reading/writing and a strict test-command allowlist. Writes show a preview and require confirmation. Arbitrary shell access, network access, credential access, and unrestricted destructive commands are intentionally not enabled.
+- **Coding-agent loop**: model output is parsed as a typed JSON tool action, then routed to list/read/search/write/test/finish tools. Malformed output is rejected and retried. File writes show a preview and require user confirmation; test commands use a strict allowlist. Arbitrary shell access, network access, credential access, and unrestricted destructive commands are intentionally not enabled.
 
 ## Training and storage
 
