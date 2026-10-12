@@ -10,6 +10,7 @@ use std::{
     fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -69,6 +70,9 @@ enum Commands {
         /// Start from random weights instead of resuming an existing checkpoint.
         #[arg(long, default_value_t = false)]
         fresh: bool,
+        /// Upload the completed checkpoint to the private repository release using authenticated GitHub CLI.
+        #[arg(long, default_value_t = false)]
+        publish_release: bool,
     },
     /// Generate a continuation using a trained checkpoint.
     Generate {
@@ -155,12 +159,74 @@ fn current_time() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
-fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: i32, hidden_size: i32, learning_rate: f64, save_every: i32, fresh: bool) -> Result<()> {
+fn try_fetch_latest_release(checkpoint: &Path) -> bool {
+    if checkpoint.exists() { return true; }
+    let parent = checkpoint.parent().unwrap_or_else(|| Path::new("."));
+    if fs::create_dir_all(parent).is_err() { return false; }
+    let result = Command::new("gh")
+        .args(["release", "download", "clodex-latest", "--repo", "lstudiolab/Clodex-Base", "--pattern", "clodex.latest.ckpt", "--dir"])
+        .arg(parent)
+        .status();
+    match result {
+        Ok(status) if status.success() => {
+            let downloaded = parent.join("clodex.latest.ckpt");
+            if downloaded.is_file() && downloaded != checkpoint {
+                if fs::rename(&downloaded, checkpoint).is_err() {
+                    return fs::copy(&downloaded, checkpoint).is_ok();
+                }
+            }
+            checkpoint.is_file()
+        }
+        _ => false,
+    }
+}
+
+fn publish_latest_release(checkpoint: &Path, manifest: &Path) -> Result<()> {
+    let staging = std::env::temp_dir().join(format!("clodex-release-{}", std::process::id()));
+    fs::create_dir_all(&staging)?;
+    let staged_checkpoint = staging.join("clodex.latest.ckpt");
+    let staged_manifest = staging.join("clodex.latest.run.json");
+    fs::copy(checkpoint, &staged_checkpoint)?;
+    if manifest.is_file() { fs::copy(manifest, &staged_manifest)?; }
+
+    let repo = "lstudiolab/Clodex-Base";
+    let tag = "clodex-latest";
+    let release_exists = Command::new("gh").args(["release", "view", tag, "--repo", repo]).status()
+        .map(|status| status.success()).unwrap_or(false);
+    let result = if release_exists {
+        let mut cmd = Command::new("gh");
+        cmd.args(["release", "upload", tag, "--repo", repo, "--clobber"])
+            .arg(&staged_checkpoint);
+        if staged_manifest.is_file() { cmd.arg(&staged_manifest); }
+        cmd.status().context("failed to start GitHub CLI while uploading checkpoint")?
+    } else {
+        let mut cmd = Command::new("gh");
+        cmd.args(["release", "create", tag, "--repo", repo, "--title", "Clodex latest checkpoint", "--notes", "Latest resumable Clodex training checkpoint. This release asset is updated only when a training run explicitly uses --publish-release."]);
+        cmd.arg(&staged_checkpoint);
+        if staged_manifest.is_file() { cmd.arg(&staged_manifest); }
+        cmd.status().context("failed to start GitHub CLI while creating checkpoint release")?
+    };
+    let _ = fs::remove_dir_all(&staging);
+    if !result.success() {
+        bail!("GitHub Release upload failed. The local checkpoint remains saved. Check gh auth status and repository permissions.");
+    }
+    println!("Published checkpoint to https://github.com/{repo}/releases/tag/{tag}");
+    Ok(())
+}
+
+fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: i32, hidden_size: i32, learning_rate: f64, save_every: i32, fresh: bool, publish_release: bool) -> Result<()> {
     if steps <= 0 || sequence_length < 2 || hidden_size < 8 || save_every <= 0 {
         bail!("steps/save_every must be positive, sequence length at least 2, and hidden size at least 8");
     }
     if !(learning_rate.is_finite() && learning_rate > 0.0 && learning_rate <= 1.0) {
         bail!("learning rate must be finite and in (0, 1]");
+    }
+    if !fresh && !checkpoint.exists() {
+        if try_fetch_latest_release(&checkpoint) {
+            println!("Fetched latest checkpoint from the Clodex GitHub Release.");
+        } else {
+            println!("No local checkpoint or accessible clodex-latest release checkpoint found; starting fresh.");
+        }
     }
     let metadata = fs::metadata(&corpus).with_context(|| format!("training corpus not found: {}. Add plain-text training data first; no dataset is bundled.", corpus.display()))?;
     if metadata.len() < sequence_length as u64 + 2 {
@@ -194,6 +260,7 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
     };
     if code != 0 { bail!("training failed: {}", engine_error()); }
     println!("Training session finished. Latest checkpoint saved to {}.", checkpoint.display());
+    if publish_release { publish_latest_release(&checkpoint, &manifest_path)?; }
     Ok(())
 }
 
@@ -216,8 +283,8 @@ fn run_generate(checkpoint: PathBuf, prompt: String, max_new_tokens: usize, temp
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Train { corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh } =>
-            run_train(corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh),
+        Commands::Train { corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release } =>
+            run_train(corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release),
         Commands::Generate { checkpoint, prompt, max_new_tokens, temperature, seed } =>
             run_generate(checkpoint, prompt, max_new_tokens, temperature, seed),
         Commands::Agent { command } => match command {
