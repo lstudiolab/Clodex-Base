@@ -6,6 +6,10 @@ This directory is Clodex's repository-native, Markdown-first knowledge base. It 
 
 Read [the architecture specification](ARCHITECTURE.md) and [the extension workflow](notes/extending-the-vault.md). The example [TOML configuration](clodex-knowledge.example.toml) shows configurable vault roots, extensions, exclusions, indexing, retrieval budgets, and optional modules.
 
+## Product scope
+
+Clodex is coding-first and English-only for human-language interaction in its initial scope. See the [English-only policy](ENGLISH-ONLY.md). This does not limit the programming languages Clodex can learn to work with.
+
 ## Layout
 
 - `notes/`: concepts, languages, libraries, APIs, and engineering references.
@@ -14,6 +18,7 @@ Read [the architecture specification](ARCHITECTURE.md) and [the extension workfl
 - `index.md`: human-readable entry point and curated links.
 - `ARCHITECTURE.md`: runtime, retrieval, module, storage, lifecycle, and safety design.
 - `clodex-knowledge.example.toml`: example runtime configuration.
+- `ENGLISH-ONLY.md`: human-language scope and training/evaluation policy.
 
 ## Growth model
 
