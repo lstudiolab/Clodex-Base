@@ -309,8 +309,8 @@ extern "C" int clodex_train(const char* corpus_path, const char* checkpoint_path
                             int resume, int save_every) {
     try {
         require(checkpoint_path != nullptr, "checkpoint path is null");
-        require(steps > 0 && sequence_length >= 2 && hidden_size >= 8 && hidden_size <= 2048,
-                "invalid training dimensions");
+        require(steps > 0 && sequence_length >= 2 && sequence_length <= 2048 && hidden_size >= 8 && hidden_size <= 2048,
+                "invalid training dimensions (sequence length 2..2048, hidden size 8..2048)");
         require(save_every > 0, "save interval must be positive");
         require(std::isfinite(learning_rate) && learning_rate > 0.0 && learning_rate <= 1.0,
                 "learning rate is invalid");
