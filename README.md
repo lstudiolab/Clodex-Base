@@ -19,12 +19,12 @@ Put a plain UTF-8 training corpus at `data/train.txt` (not committed), then run:
 
 ```sh
 cargo run --release -- inspect-corpus
-cargo run --release -- train --steps 100
+cargo run --release -- train --steps 100 --publish-release
 cargo run --release -- status
 cargo run --release -- generate --prompt "fn main" --max-new-tokens 128
 ```
 
-Training resumes from `artifacts/clodex.latest.ckpt` when a compatible checkpoint exists. Use `--fresh` only when intentionally resetting weights. Periodic checkpoints retain the optimizer state and update count. See [docs/training.md](docs/training.md).
+Training resumes from `artifacts/clodex.latest.ckpt` when a compatible local checkpoint exists. If it is missing, Clodex attempts to fetch the `clodex-latest` GitHub Release asset through an authenticated `gh` CLI session. Add `--publish-release` to upload the completed checkpoint and run manifest after a session; use short sessions if you need to sync frequently. Use `--fresh` only when intentionally resetting weights. Periodic checkpoints retain the optimizer state and update count. See [docs/training.md](docs/training.md).
 
 ## Coding-agent tools
 
