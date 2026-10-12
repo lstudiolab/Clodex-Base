@@ -235,8 +235,8 @@ fn publish_latest_release(checkpoint: &Path, manifest: &Path) -> Result<()> {
 }
 
 fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: i32, hidden_size: i32, learning_rate: f64, save_every: i32, fresh: bool, publish_release: bool, allow_corpus_change: bool) -> Result<()> {
-    if steps <= 0 || sequence_length < 2 || hidden_size < 8 || save_every <= 0 {
-        bail!("steps/save_every must be positive, sequence length at least 2, and hidden size at least 8");
+    if steps <= 0 || sequence_length < 2 || sequence_length > 2048 || hidden_size < 8 || hidden_size > 2048 || save_every <= 0 {
+        bail!("steps/save_every must be positive, sequence length must be in 2..=2048, and hidden size must be in 8..=2048");
     }
     if !(learning_rate.is_finite() && learning_rate > 0.0 && learning_rate <= 1.0) {
         bail!("learning rate must be finite and in (0, 1]");
