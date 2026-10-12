@@ -137,6 +137,19 @@ void save_checkpoint(const std::string& path, const Parameters& p) {
     require(!ec, std::string("cannot replace checkpoint: ") + ec.message());
 }
 
+int checkpoint_hidden_size(const char* path) {
+    std::ifstream in(path, std::ios::binary);
+    require(in.good(), "cannot open checkpoint");
+    char magic[sizeof(kMagic)]{};
+    in.read(magic, sizeof(magic));
+    require(in.good() && std::memcmp(magic, kMagic, sizeof(kMagic)) == 0, "checkpoint magic/version signature is invalid");
+    int version = 0, vocab = 0, hidden = 0;
+    read_value(in, version); read_value(in, vocab); read_value(in, hidden);
+    require(version == kFormatVersion && vocab == kVocabulary, "unsupported checkpoint architecture");
+    require(hidden >= 8 && hidden <= 2048, "checkpoint hidden size is outside supported range");
+    return hidden;
+}
+
 void load_checkpoint(const std::string& path, Parameters& p) {
     std::ifstream in(path, std::ios::binary);
     require(in.good(), "cannot open checkpoint");
@@ -309,6 +322,7 @@ extern "C" int clodex_train(const char* corpus_path, const char* checkpoint_path
         if (resume && std::filesystem::is_regular_file(checkpoint_path)) {
             load_checkpoint(checkpoint_path, model);
             resumed = true;
+            rng.seed(0xC10D3ULL + model.updates);
         } else {
             initialize(model, rng);
         }
@@ -349,8 +363,9 @@ extern "C" int clodex_generate(const char* checkpoint_path, const unsigned char*
         require(max_new_tokens <= 16384, "generation length exceeds safety limit");
         require(std::isfinite(temperature) && temperature >= 0.05 && temperature <= 3.0,
                 "temperature must be in [0.05, 3.0]");
-        Parameters model(128);
+        Parameters model(checkpoint_hidden_size(checkpoint_path));
         load_checkpoint(checkpoint_path, model);
+        *output_size = 0;
         std::vector<float> state(model.hidden, 0.0f), next(model.hidden, 0.0f), probs(kVocabulary, 0.0f);
         for (std::size_t i = 0; i < prompt_size; ++i) {
             forward_one(model, prompt[i], state, next);
