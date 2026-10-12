@@ -278,25 +278,39 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
         ],
     };
     let pending_manifest_path = manifest_path.with_extension("run.pending.json");
-    fs::write(&pending_manifest_path, serde_json::to_vec_pretty(&run)?)?;
     let corpus_c = cstring_path(&corpus)?;
     let checkpoint_c = cstring_path(&checkpoint)?;
     println!("Clodex engine: {}", unsafe { CStr::from_ptr(clodex_engine_version()).to_string_lossy() });
     println!("Corpus: {} ({} bytes, SHA-256 {})", corpus.display(), metadata.len(), run.corpus_sha256);
     println!("Checkpoint: {} | mode: {}", checkpoint.display(), if fresh { "fresh" } else { "resume if compatible" });
-    let code = unsafe {
-        clodex_train(corpus_c.as_ptr(), checkpoint_c.as_ptr(), steps, sequence_length, hidden_size, learning_rate, if fresh { 0 } else { 1 }, save_every)
-    };
-    if code != 0 {
-        let _ = fs::remove_file(&pending_manifest_path);
-        bail!("training failed: {}", engine_error());
-    }
-    if fs::rename(&pending_manifest_path, &manifest_path).is_err() {
-        fs::copy(&pending_manifest_path, &manifest_path)?;
-        fs::remove_file(&pending_manifest_path)?;
+    let chunked = publish_release;
+    let mut completed_steps = 0;
+    let mut initialize_fresh = fresh;
+    while completed_steps < steps {
+        let chunk_steps = if chunked { save_every.min(steps - completed_steps) } else { steps };
+        fs::write(&pending_manifest_path, serde_json::to_vec_pretty(&run)?)?;
+        let code = unsafe {
+            clodex_train(
+                corpus_c.as_ptr(), checkpoint_c.as_ptr(), chunk_steps, sequence_length, hidden_size,
+                learning_rate, if initialize_fresh { 0 } else { 1 }, save_every
+            )
+        };
+        if code != 0 {
+            let _ = fs::remove_file(&pending_manifest_path);
+            bail!("training failed after {} requested steps: {}", completed_steps, engine_error());
+        }
+        if fs::rename(&pending_manifest_path, &manifest_path).is_err() {
+            fs::copy(&pending_manifest_path, &manifest_path)?;
+            fs::remove_file(&pending_manifest_path)?;
+        }
+        initialize_fresh = false;
+        completed_steps += chunk_steps;
+        if chunked {
+            println!("Checkpoint sync after {completed_steps}/{steps} requested steps.");
+            publish_latest_release(&checkpoint, &manifest_path)?;
+        }
     }
     println!("Training session finished. Latest checkpoint saved to {}.", checkpoint.display());
-    if publish_release { publish_latest_release(&checkpoint, &manifest_path)?; }
     Ok(())
 }
 
