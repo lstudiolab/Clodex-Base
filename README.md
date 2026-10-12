@@ -24,7 +24,7 @@ cargo run --release -- status
 cargo run --release -- generate --prompt "fn main" --max-new-tokens 128
 ```
 
-Training resumes from `artifacts/clodex.latest.ckpt` when a compatible local checkpoint exists. If it is missing, Clodex attempts to fetch the `clodex-latest` GitHub Release asset through an authenticated `gh` CLI session. Add `--publish-release` to upload the completed checkpoint and run manifest after a session; use short sessions if you need to sync frequently. Use `--fresh` only when intentionally resetting weights. Periodic checkpoints retain the optimizer state and update count. See [docs/training.md](docs/training.md).
+Training resumes from `artifacts/clodex.latest.ckpt` when a compatible local checkpoint exists. If it is missing, Clodex attempts to fetch the `clodex-latest` GitHub Release asset through an authenticated `gh` CLI session. Add `--publish-release` to upload the completed checkpoint and run manifest after a session; use short sessions if you need to sync frequently. Use `--fresh` only when intentionally resetting weights. Clodex checks the saved corpus SHA-256 and refuses mismatched data unless you explicitly pass `--allow-corpus-change`. Periodic checkpoints retain the optimizer state and update count. See [docs/training.md](docs/training.md).
 
 ## Coding-agent tools
 
