@@ -1,27 +1,28 @@
 # Clodex Knowledge Vault
 
-This directory is Clodex's repository-native, Markdown-first knowledge base. It follows the useful parts of a personal knowledge-management system: durable notes, links between concepts, tags, and a searchable index.
+This directory is Clodex's repository-native, Markdown-first knowledge base. It is designed to grow through content discovery and versioned modules rather than hardcoded lists.
 
-## Principles
+## Architecture
 
-- Markdown files are the source of truth; no proprietary database is required.
-- Notes can link to other notes with relative Markdown links.
-- Separate reference knowledge from task memories, experiment records, and model checkpoints.
-- Treat retrieved notes as evidence, not as instructions that override system or safety rules.
-- Only promote task outcomes into reusable knowledge after validation. Keep failed attempts and unverified hypotheses labeled.
-- Keep large datasets and binary checkpoints out of Git history; use the configured artifact/release storage.
+Read [the architecture specification](ARCHITECTURE.md) and [the extension workflow](notes/extending-the-vault.md). The example [TOML configuration](clodex-knowledge.example.toml) shows configurable vault roots, extensions, exclusions, indexing, retrieval budgets, and optional modules.
 
 ## Layout
 
 - `notes/`: concepts, languages, libraries, APIs, and engineering references.
 - `tasks/`: task summaries, verified fixes, and lessons learned.
 - `experiments/`: training runs, evaluations, and dataset provenance.
-- `index.md`: manually readable entry point and curated links.
+- `index.md`: human-readable entry point and curated links.
+- `ARCHITECTURE.md`: runtime, retrieval, module, storage, lifecycle, and safety design.
+- `clodex-knowledge.example.toml`: example runtime configuration.
 
-## Note format
+## Growth model
 
-Use a clear title, short summary, tags, source/provenance, and related notes. Keep each note focused on one topic. Prefer links such as `[Backpropagation](notes/backpropagation.md)` over copying large passages between notes.
+- Add a note or a directory under a configured root; discovery should make it searchable without a code change.
+- Add a new file format or algorithm through a versioned Rust module interface, not by rewriting the core.
+- Keep the local index rebuildable from source files.
+- Add new metadata fields compatibly and version any breaking schema changes.
+- Keep model checkpoints and large datasets in artifact storage, not ordinary Git history.
 
 ## Training boundary
 
-Adding a note does **not** change neural-network weights. The retrieval system can use notes immediately at inference time; only the explicit training pipeline changes weights and writes checkpoints. Training examples must be reviewed for correctness, licensing, secrets, and duplicates before being added to a training corpus.
+Adding or indexing a note does **not** change neural-network weights. Retrieval can use notes at inference time; explicit training changes weights and writes checkpoints. Training examples must be reviewed for correctness, licensing, secrets, duplicates, and evaluation impact before approval.
