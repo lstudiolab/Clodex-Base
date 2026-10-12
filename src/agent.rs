@@ -8,6 +8,8 @@ use std::{
     io::{self, Write},
     path::{Component, Path, PathBuf},
     process::Command,
+    thread,
+    time::{Duration, Instant},
 };
 
 fn canonical_workspace(workspace: &Path) -> Result<PathBuf> {
@@ -63,7 +65,11 @@ pub fn list_files(workspace: &Path) -> Result<Vec<PathBuf>> {
 pub fn write_file_interactive(workspace: &Path, relative: &Path, content: &str) -> Result<()> {
     let path = safe_path(workspace, relative)?;
     if !path.parent().map(Path::exists).unwrap_or(false) { bail!("target parent does not exist; create directories explicitly first"); }
-    let previous = fs::read_to_string(&path).unwrap_or_default();
+    let previous = if path.is_file() {
+        fs::read_to_string(&path).with_context(|| format!("existing target is not a readable UTF-8 text file: {}", relative.display()))?
+    } else {
+        String::new()
+    };
     println!("--- proposed change: {} ---", relative.display());
     println!("old: {} bytes | new: {} bytes", previous.len(), content.len());
     let old_lines: Vec<_> = previous.lines().collect();
@@ -91,10 +97,21 @@ pub fn run_test_command(workspace: &Path, command_line: &str) -> Result<()> {
         "ctest --test-dir build" => ("ctest", &["--test-dir", "build"]),
         _ => bail!("command is not allowlisted. Allowed: cargo test, cargo test --workspace, cargo check, cmake --build build, ctest --test-dir build"),
     };
-    let status = Command::new(program).args(args).current_dir(&root).status()
+    let mut child = Command::new(program).args(args).current_dir(&root).spawn()
         .with_context(|| format!("failed to launch {program}"))?;
-    if !status.success() { bail!("test command failed with status {status}"); }
-    Ok(())
+    let deadline = Instant::now() + Duration::from_secs(900);
+    loop {
+        if let Some(status) = child.try_wait().context("failed while waiting for test process")? {
+            if !status.success() { bail!("test command failed with status {status}"); }
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("test command exceeded the 15-minute safety timeout");
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 
