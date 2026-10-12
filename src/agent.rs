@@ -175,13 +175,14 @@ where
     F: FnMut(&str, usize) -> Result<String>,
 {
     if task.trim().is_empty() { bail!("task cannot be empty"); }
+    if task.len() > 4_000 { bail!("task must be at most 4 KB for the byte-level model context"); }
     if !(1..=20).contains(&max_iterations) { bail!("iterations must be between 1 and 20"); }
     if !(32..=8192).contains(&response_bytes) { bail!("response-bytes must be between 32 and 8192"); }
     let root = canonical_workspace(workspace)?;
     let mut history: Vec<String> = Vec::new();
 
     for turn in 1..=max_iterations {
-        let recent = history.iter().rev().take(6).rev().cloned().collect::<Vec<_>>().join("\n");
+        let recent = history.iter().rev().take(3).rev().cloned().collect::<Vec<_>>().join("\n");
         let prompt = format!(
             "You are Clodex, a cautious coding agent. Work only inside this workspace: {}.\n\
              User task: {}\n\
@@ -236,7 +237,7 @@ where
             }
         };
         println!("Agent turn {turn}/{max_iterations}: {}", truncate_observation(observation.clone(), 1_500));
-        history.push(format!("turn {turn}: {}", truncate_observation(observation, 3_000)));
+        history.push(format!("turn {turn}: {}", truncate_observation(observation, 1_200)));
     }
     println!("Clodex stopped at the iteration limit. Review the observations above; no additional action was taken.");
     Ok(())
