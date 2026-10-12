@@ -73,6 +73,9 @@ enum Commands {
         /// Upload the completed checkpoint to the private repository release using authenticated GitHub CLI.
         #[arg(long, default_value_t = false)]
         publish_release: bool,
+        /// Explicitly allow continuation on a corpus whose hash differs from the saved run manifest.
+        #[arg(long, default_value_t = false)]
+        allow_corpus_change: bool,
     },
     /// Generate a continuation using a trained checkpoint.
     Generate {
@@ -164,16 +167,21 @@ fn try_fetch_latest_release(checkpoint: &Path) -> bool {
     let parent = checkpoint.parent().unwrap_or_else(|| Path::new("."));
     if fs::create_dir_all(parent).is_err() { return false; }
     let result = Command::new("gh")
-        .args(["release", "download", "clodex-latest", "--repo", "lstudiolab/Clodex-Base", "--pattern", "clodex.latest.ckpt", "--dir"])
+        .args(["release", "download", "clodex-latest", "--repo", "lstudiolab/Clodex-Base", "--pattern", "clodex.latest.ckpt", "--pattern", "clodex.latest.run.json", "--dir"])
         .arg(parent)
         .status();
     match result {
         Ok(status) if status.success() => {
             let downloaded = parent.join("clodex.latest.ckpt");
             if downloaded.is_file() && downloaded != checkpoint {
-                if fs::rename(&downloaded, checkpoint).is_err() {
-                    return fs::copy(&downloaded, checkpoint).is_ok();
+                if fs::rename(&downloaded, checkpoint).is_err() && fs::copy(&downloaded, checkpoint).is_err() {
+                    return false;
                 }
+            }
+            let downloaded_manifest = parent.join("clodex.latest.run.json");
+            let expected_manifest = checkpoint.with_extension("run.json");
+            if downloaded_manifest.is_file() && downloaded_manifest != expected_manifest {
+                let _ = fs::rename(&downloaded_manifest, &expected_manifest);
             }
             checkpoint.is_file()
         }
@@ -214,7 +222,7 @@ fn publish_latest_release(checkpoint: &Path, manifest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: i32, hidden_size: i32, learning_rate: f64, save_every: i32, fresh: bool, publish_release: bool) -> Result<()> {
+fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: i32, hidden_size: i32, learning_rate: f64, save_every: i32, fresh: bool, publish_release: bool, allow_corpus_change: bool) -> Result<()> {
     if steps <= 0 || sequence_length < 2 || hidden_size < 8 || save_every <= 0 {
         bail!("steps/save_every must be positive, sequence length at least 2, and hidden size at least 8");
     }
@@ -233,11 +241,20 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
         bail!("corpus is too small for the requested sequence length");
     }
     if let Some(parent) = checkpoint.parent() { fs::create_dir_all(parent)?; }
+    let corpus_hash = hash_file(&corpus)?;
+    let manifest_path = checkpoint.with_extension("run.json");
+    if !fresh && checkpoint.is_file() && manifest_path.is_file() {
+        let previous: RunManifest = serde_json::from_slice(&fs::read(&manifest_path)?)
+            .context("saved run manifest is invalid JSON; inspect or restore it before resuming")?;
+        if previous.corpus_sha256 != corpus_hash && !allow_corpus_change {
+            bail!("corpus SHA-256 differs from the saved checkpoint manifest. Use the same corpus, pass --allow-corpus-change intentionally, or use --fresh to reset the model.");
+        }
+    }
     let run = RunManifest {
         format_version: 1,
         model: "clodex-byte-rnn-v1".into(),
         tokenizer: "utf8-byte-ids-v1 (256 byte tokens + BOS + EOS)".into(),
-        corpus_sha256: hash_file(&corpus)?,
+        corpus_sha256: corpus_hash,
         started_unix_seconds: current_time(),
         requested_steps: steps,
         checkpoint_path: checkpoint.to_string_lossy().into_owned(),
@@ -248,7 +265,6 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
             "Keep datasets and checkpoints outside Git history; publish checkpoints as release assets.".into(),
         ],
     };
-    let manifest_path = checkpoint.with_extension("run.json");
     fs::write(&manifest_path, serde_json::to_vec_pretty(&run)?)?;
     let corpus_c = cstring_path(&corpus)?;
     let checkpoint_c = cstring_path(&checkpoint)?;
@@ -283,8 +299,8 @@ fn run_generate(checkpoint: PathBuf, prompt: String, max_new_tokens: usize, temp
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Train { corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release } =>
-            run_train(corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release),
+        Commands::Train { corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release, allow_corpus_change } =>
+            run_train(corpus, checkpoint, steps, sequence_length, hidden_size, learning_rate, save_every, fresh, publish_release, allow_corpus_change),
         Commands::Generate { checkpoint, prompt, max_new_tokens, temperature, seed } =>
             run_generate(checkpoint, prompt, max_new_tokens, temperature, seed),
         Commands::Agent { command } => match command {
