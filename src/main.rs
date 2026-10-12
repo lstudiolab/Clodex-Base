@@ -265,7 +265,8 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
             "Keep datasets and checkpoints outside Git history; publish checkpoints as release assets.".into(),
         ],
     };
-    fs::write(&manifest_path, serde_json::to_vec_pretty(&run)?)?;
+    let pending_manifest_path = manifest_path.with_extension("run.pending.json");
+    fs::write(&pending_manifest_path, serde_json::to_vec_pretty(&run)?)?;
     let corpus_c = cstring_path(&corpus)?;
     let checkpoint_c = cstring_path(&checkpoint)?;
     println!("Clodex engine: {}", unsafe { CStr::from_ptr(clodex_engine_version()).to_string_lossy() });
@@ -274,7 +275,14 @@ fn run_train(corpus: PathBuf, checkpoint: PathBuf, steps: i32, sequence_length: 
     let code = unsafe {
         clodex_train(corpus_c.as_ptr(), checkpoint_c.as_ptr(), steps, sequence_length, hidden_size, learning_rate, if fresh { 0 } else { 1 }, save_every)
     };
-    if code != 0 { bail!("training failed: {}", engine_error()); }
+    if code != 0 {
+        let _ = fs::remove_file(&pending_manifest_path);
+        bail!("training failed: {}", engine_error());
+    }
+    if fs::rename(&pending_manifest_path, &manifest_path).is_err() {
+        fs::copy(&pending_manifest_path, &manifest_path)?;
+        fs::remove_file(&pending_manifest_path)?;
+    }
     println!("Training session finished. Latest checkpoint saved to {}.", checkpoint.display());
     if publish_release { publish_latest_release(&checkpoint, &manifest_path)?; }
     Ok(())
