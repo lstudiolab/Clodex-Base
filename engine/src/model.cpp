@@ -1,6 +1,7 @@
 #include "clodex/model.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -331,15 +332,23 @@ extern "C" int clodex_train(const char* corpus_path, const char* checkpoint_path
                     resumed ? "resume" : "fresh",
                     static_cast<unsigned long long>(model.updates), model.hidden, kVocabulary, sequence_length);
         Gradients gradients(model);
+        const auto training_started = std::chrono::steady_clock::now();
         for (int i = 0; i < steps; ++i) {
             const float loss = train_step(model, gradients, corpus, sequence_length, rng, static_cast<float>(learning_rate));
-            if ((i + 1) % 10 == 0 || i == 0) {
-                std::printf("update=%llu session=%d/%d loss=%.4f\n",
-                            static_cast<unsigned long long>(model.updates), i + 1, steps, loss);
+            if ((i + 1) % 10 == 0 || i == 0 || i + 1 == steps) {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::steady_clock::now() - training_started).count();
+                const double percent = 100.0 * static_cast<double>(i + 1) / static_cast<double>(steps);
+                std::printf("progress=%.1f%% update=%llu session=%d/%d loss=%.4f elapsed=%llds\n",
+                            percent, static_cast<unsigned long long>(model.updates), i + 1, steps,
+                            loss, static_cast<long long>(elapsed));
                 std::fflush(stdout);
             }
             if ((i + 1) % save_every == 0 || i + 1 == steps) {
                 save_checkpoint(checkpoint_path, model);
+                std::printf("checkpoint_saved=%s update=%llu\n", checkpoint_path,
+                            static_cast<unsigned long long>(model.updates));
+                std::fflush(stdout);
             }
         }
         g_last_error.clear();

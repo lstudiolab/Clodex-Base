@@ -1,21 +1,51 @@
-# Training and resuming
+# Pretrained model training and expansion
 
-1. Install a stable Rust toolchain, C++17 compiler, and CMake.
-2. Put a UTF-8 corpus in `data/train.txt` (not committed; that path is ignored).
-3. Build/test with `cargo test`.
-4. Train with `cargo run --release -- train --corpus data/train.txt --steps 1000`.
-5. Stop a run only after the periodic checkpoint has been written when possible. The default save cadence is 100 updates.
-6. Resume the same corpus and checkpoint using the same command. Resume is the default; pass `--fresh` only to intentionally start new weights. The run manifest records the corpus SHA-256. If the corpus hash differs from the manifest, Clodex refuses to continue unless you explicitly pass `--allow-corpus-change`. This prevents accidentally continuing weights on a different dataset. The manifest is replaced only after a training session finishes successfully. Keep the same hidden size when resuming.
-7. Sample with `cargo run --release -- generate --prompt "fn main" --max-new-tokens 128`.
+## Goal
 
-The initial engine trains on raw UTF-8 bytes. The loss/task quality will be limited by corpus quality, model capacity, training time, and the CPU reference engine. Do not interpret a successful build or a low training loss as proof of coding competence; test generated code separately.
+Clodex's intended path is to start from a capable pretrained coding model near 3B parameters, improve the actual model weights with continued training, and investigate architecture expansion toward 7B and later sizes. LoRA is not the intended core training method.
 
-## Artifact storage
+**This goal is not implemented by the current engine.** The current C++ engine is a small byte-level RNN with a CPU-only backend. Its checkpoints are not compatible with Qwen or other transformer checkpoints. Do not use `clodex train` to claim that a pretrained transformer has been fine-tuned or expanded.
 
-Do not commit checkpoints to the repository. A maintainer may upload a checkpoint to a GitHub Release after creating a versioned tag/release, for example using the GitHub CLI from a trusted machine:
+## Staged plan
+
+1. **Select and pin a base model.** Review the model's license, permitted uses, model-card requirements, tokenizer, architecture configuration, and checkpoint format. Record the exact model revision and file hashes. Do not commit model weights or credentials.
+2. **Validate inference first.** Load the original pretrained model with a compatible runtime and verify a fixed set of coding prompts before any training. Keep the original checkpoint unchanged.
+3. **Prepare data.** Build a deduplicated, quality-filtered dataset with source/license records. Separate training and held-out evaluation examples. Never place credentials, private code, or unauthorized data in the corpus.
+4. **Implement full-weight continued training.** Every intended base-model parameter remains trainable; this is not LoRA. Implement and test gradient accumulation, optimizer-state handling, gradient checkpointing, mixed precision where supported, resumable checkpoints, and deterministic run metadata. Verify that gradients and parameters actually change.
+5. **Evaluate.** Compare the base and trained checkpoints on the same held-out coding, reasoning, and compile/test tasks. Track loss, failures, throughput, peak memory, and data provenance.
+6. **Explore 3B-to-7B expansion separately.** Increasing layer count or width changes the architecture and tensor shapes. Use a documented model-expansion/initialization method, preserve a copy of the 3B model, then continue training the expanded model. Added parameters do not automatically add intelligence; evaluate for capability gains and regressions.
+7. **Scale only when measured resources allow.** A free Colab T4 with 15 GB VRAM is not enough for ordinary full-parameter training of a 7B model with standard optimizer states. Even 3B full-weight training is memory-constrained. Quantized weights alone do not solve all training-memory needs. Benchmark memory and throughput before committing to a long run.
+
+## Current repository commands (reference engine only)
+
+The existing byte-RNN smoke/reference engine can still be built and tested:
 
 ```sh
-gh release create clodex-checkpoint-v1 artifacts/clodex.latest.ckpt artifacts/clodex.latest.run.json --title "Clodex checkpoint v1" --notes "Training checkpoint and run manifest"
+cargo test --release
+cmake -S engine -B build
+cmake --build build --parallel 2
+ctest --test-dir build --output-on-failure
 ```
 
-The CLI can restore a missing local checkpoint and its run manifest from the `clodex-latest` release using `gh release download`. This requires GitHub CLI (`gh`) to be installed and authenticated with access to the private repository. Use `cargo run --release -- train --steps 100 --save-every 25 --publish-release` to train in 25-update chunks and publish the checkpoint and manifest after each successful chunk. The `--publish-release` flag is intentionally explicit; ordinary training never uploads artifacts without it. Frequent uploads incur network and release-storage costs, so choose a save cadence appropriate to the session. Do not publish private corpora, secrets, or weights derived from data you are not authorized to redistribute.
+Its small-corpus training command is useful only for validating the existing RNN pipeline:
+
+```sh
+cargo run --release -- train --corpus data/train.txt --steps 100
+```
+
+It does **not** load a pretrained transformer, train 3B parameters, or expand 3B to 7B.
+
+## Artifact and resume policy
+
+Keep base-model files, datasets, and checkpoints out of Git. Store model ID/revision, tokenizer ID/revision, dataset fingerprint, optimizer/configuration, precision, architecture, training steps, and checkpoint hashes in run metadata. A resume must reject incompatible architecture/tokenizer changes and unexpected dataset changes unless the operator explicitly starts a new run or authorizes the change. Never publish private corpora, secrets, or weights unless redistribution is permitted by the model and dataset licenses.
+
+## Required acceptance checks for the new trainer
+
+- Loads the pinned pretrained checkpoint and tokenizer without silently substituting random weights.
+- Reports model architecture and parameter count, and verifies expected checkpoint tensor shapes.
+- Reports real update progress, loss, elapsed time, learning rate, and checkpoint-save success.
+- Saves enough optimizer/scheduler/RNG state to resume the same run.
+- Can resume after interruption and validates the checkpoint before continuing.
+- Includes a short end-to-end training test that proves trainable weights changed.
+- Includes a separate inference smoke test and held-out evaluation.
+- Refuses unsupported model architectures or memory settings with a clear error.
